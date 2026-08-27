@@ -26,6 +26,8 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 - Multi-tenant backend, single shared Postgres database, RLS + app-layer tenant scoping.
 - Auth via ASP.NET Core Identity + OpenIddict (JWT, shift-length refresh, fixed role model). See [auth.md](auth.md).
 - Backend organized as Vertical Slice + MediatR + FluentValidation + Minimal API, EF Core code-first with migrations. See [backend-conventions.md](backend-conventions.md).
+- Web organized as App Router + Server Components/TanStack Query + shadcn/ui + Orval-generated hooks + BFF session auth. See [web-conventions.md](web-conventions.md).
+- Testing approach favoring integration coverage (tenant isolation, sync/concurrency) over exhaustive unit tests. See [testing-strategy.md](testing-strategy.md).
 - Offline task-based execution on PDT (pick, putaway, count, receipt-check) with online-only login, per [sync-protocol.md](sync-protocol.md).
 - Concurrent PDTs working the same warehouse simultaneously (multiple pickers on one floor), with download-time stock reservation.
 - Camera-based scanning (ML Kit) on Android, min target Android 9–11 (exact floor TBD).
@@ -48,10 +50,9 @@ These didn't block starting the architecture, but will block implementation of t
 - Reservation TTL for stock held by a task download that never syncs.
 - Sync batch partial-failure behavior (reject whole batch vs. apply up to first invalid event).
 - Master-data cache staleness limit on the PDT.
-- Web app conventions (App Router usage, component library, data-fetching/state approach) — not yet decided.
 - Android module structure and DI approach — the existing manufacturer-detection app is a reference point but hasn't been reviewed against this project's needs yet.
 - Non-functional targets: expected tenant count, SKUs/tenant, concurrent PDTs, scan-to-response latency target, backup/RPO/RTO, data residency requirements.
 - Deployment specifics beyond "Docker Compose for v1": hosting provider, CI/CD, observability stack.
 - Exact minimum Android API level (9 vs. 11) — pending a look at actual target device fleet.
 - Auth token lifetime values and integration scope granularity — see [auth.md](auth.md)'s open questions.
-- Integration test coverage conventions — see [backend-conventions.md](backend-conventions.md)'s open questions.
+- Session cookie storage approach (self-contained encrypted cookie vs. server-side session store) — see [web-conventions.md](web-conventions.md)'s open questions.
