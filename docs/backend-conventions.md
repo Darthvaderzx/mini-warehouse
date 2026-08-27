@@ -59,6 +59,6 @@ Entities are defined as C# classes; schema is generated and evolved via EF Core 
 
 Exact naming and whether each slice is one file or a small folder (request/handler/endpoint split into three files) is left to whoever starts implementation — the boundary that matters is feature-based folders, not the file count within one.
 
-## Open questions
+## Testing
 
-- Testing conventions specific to this structure (unit-testing handlers directly is straightforward; integration tests over the full Minimal API pipeline via `WebApplicationFactory` still need a decision on scope/coverage expectations) — see [scope-v1.md](scope-v1.md).
+See [testing-strategy.md](testing-strategy.md) for the full approach. In short: unit test handlers directly for branching business logic, integration test anything touching EF Core/RLS/tenant isolation against a real Postgres via Testcontainers, and give the offline sync/movement-ledger logic dedicated concurrency and replay tests — that combination catches more real bugs here than a large unit-test suite would.

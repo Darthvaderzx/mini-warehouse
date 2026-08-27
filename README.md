@@ -11,6 +11,8 @@ A small-scale, multi-tenant warehouse management system: Android PDTs for offlin
 - [docs/sync-protocol.md](docs/sync-protocol.md) — offline task queue + event ledger design
 - [docs/auth.md](docs/auth.md) — ASP.NET Identity + OpenIddict auth design
 - [docs/backend-conventions.md](docs/backend-conventions.md) — Vertical Slice + MediatR + FluentValidation + Minimal API + EF Core
+- [docs/web-conventions.md](docs/web-conventions.md) — App Router, TanStack Query, shadcn/ui, Orval, BFF session auth
+- [docs/testing-strategy.md](docs/testing-strategy.md) — what's tested, what isn't, and why
 - [docs/scope-v1.md](docs/scope-v1.md) — v1 in/out scope and open decisions
 - [docs/glossary.md](docs/glossary.md) — domain vocabulary
 
