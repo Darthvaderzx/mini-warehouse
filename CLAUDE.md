@@ -7,6 +7,7 @@ Small-scale, multi-tenant warehouse management system: Android PDTs for floor wo
 - [docs/domain-model.md](docs/domain-model.md) — entities and why they're shaped this way
 - [docs/sync-protocol.md](docs/sync-protocol.md) — offline task queue + event ledger design
 - [docs/auth.md](docs/auth.md) — ASP.NET Identity + OpenIddict, token lifetimes, grant types, role model
+- [docs/backend-conventions.md](docs/backend-conventions.md) — Vertical Slice + MediatR + FluentValidation + Minimal API + EF Core
 - [docs/scope-v1.md](docs/scope-v1.md) — what's in/out for v1, and what's still an open decision
 - [docs/glossary.md](docs/glossary.md) — domain vocabulary; use these terms, not synonyms
 
@@ -31,4 +32,4 @@ Small-scale, multi-tenant warehouse management system: Android PDTs for floor wo
 
 ## Before implementing a new area
 
-Check [docs/scope-v1.md](docs/scope-v1.md)'s "Still open" list — several implementation-level decisions (backend architecture style, web conventions, Android module structure, exact Location hierarchy depth) are intentionally not yet made. Flag them rather than silently picking an answer.
+Check [docs/scope-v1.md](docs/scope-v1.md)'s "Still open" list — several implementation-level decisions (web conventions, Android module structure, exact Location hierarchy depth) are intentionally not yet made. Flag them rather than silently picking an answer.
