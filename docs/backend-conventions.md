@@ -1,6 +1,6 @@
 # Backend Conventions (v1)
 
-**Decision:** Vertical Slice organization + MediatR (Command/Query + Handler) + Minimal API for HTTP endpoints + EF Core (code-first, migrations) for data access.
+**Decision:** Vertical Slice organization + MediatR (Command/Query + Handler) + FluentValidation (via a MediatR pipeline behavior) + Minimal API for HTTP endpoints + EF Core (code-first, migrations) for data access.
 
 ## Vertical Slice, not Layered
 
@@ -13,7 +13,13 @@ Why: this project has many largely-independent workflows (receiving, putaway, pi
 Each slice is a MediatR request (`ICommand`/`IRequest`) plus its `IRequestHandler`. This matches the pattern already used in prior Controller-based work — the only change is where the `mediator.Send(...)` call is made from (a Minimal API endpoint delegate instead of a Controller action; see below).
 
 - All actual business logic lives in the handler, never in the endpoint delegate.
-- Cross-cutting concerns (validation, logging) can be added later as MediatR pipeline behaviors (e.g. a `ValidationBehavior<TRequest,TResponse>` backed by FluentValidation) without touching individual handlers — not built for v1, but the pattern leaves room for it.
+- Cross-cutting concerns (logging, authorization checks) can be added later as further MediatR pipeline behaviors without touching individual handlers — not built for v1, but the pattern leaves room for it.
+
+## FluentValidation, via a MediatR pipeline behavior
+
+Each request that needs input validation gets a colocated `IValidator<TRequest>` (FluentValidation), living in the same feature folder as its command/query. A single `ValidationBehavior<TRequest, TResponse>` registered once in the MediatR pipeline runs the matching validator (if one exists) before the handler executes, short-circuiting with a validation-failure result otherwise.
+
+This keeps handlers free of manual `if (x == null) throw ...` guard clauses — a handler can assume its request is already valid by the time it runs. Validators are opt-in per request (a slice with nothing to validate just has no validator registered), so this doesn't force boilerplate onto trivial commands.
 
 ## Minimal API, not Controllers
 
@@ -35,7 +41,7 @@ Entities are defined as C# classes; schema is generated and evolved via EF Core 
   /src
     /Features
       /Picking
-        CompletePickTask.cs      (Command + Handler + endpoint registration)
+        CompletePickTask.cs      (Command + Handler + Validator + endpoint registration)
         ShortPick.cs
       /Putaway
         ConfirmPutaway.cs
@@ -55,5 +61,4 @@ Exact naming and whether each slice is one file or a small folder (request/handl
 
 ## Open questions
 
-- Whether/when to introduce FluentValidation + a MediatR validation pipeline behavior (not needed until enough slices exist to make per-handler validation repetitive).
 - Testing conventions specific to this structure (unit-testing handlers directly is straightforward; integration tests over the full Minimal API pipeline via `WebApplicationFactory` still need a decision on scope/coverage expectations) — see [scope-v1.md](scope-v1.md).
