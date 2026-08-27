@@ -2,6 +2,8 @@
 
 Small-scale, multi-tenant warehouse management system: Android PDTs for floor work (offline-capable), a Next.js web app for back-office/decision-level work, and an ASP.NET Core backend as the single source of truth. Industry-agnostic by design — see [docs/scope-v1.md](docs/scope-v1.md) for why a generic core was chosen over per-industry data models.
 
+**Delivery order: Backend (Phase 1) → Web (Phase 2) → Android (Phase 3).** The backend's OpenAPI contract has to exist before web or Android can build against it. See [docs/scope-v1.md](docs/scope-v1.md#delivery-phases).
+
 **Read before working in this repo:**
 - [docs/architecture.md](docs/architecture.md) — tech stack, multi-tenancy model, monorepo layout, contract-first API
 - [docs/domain-model.md](docs/domain-model.md) — entities and why they're shaped this way

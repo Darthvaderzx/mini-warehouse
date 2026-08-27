@@ -4,6 +4,14 @@
 
 An industry-agnostic, small-scale WMS for single-warehouse (or single-storage-space) customers who can't justify enterprise WMS cost/overhead. Multi-tenant cloud backend, Android PDTs for floor work, web app for back-office/decision-level work. See [architecture.md](architecture.md).
 
+## Delivery phases
+
+Implementation proceeds in this order, not all at once:
+
+1. **Phase 1 — Backend.** The API contract is the source of truth for every other client (see [architecture.md](architecture.md)'s contract-first decision), so it has to exist first. This is where agentic development starts.
+2. **Phase 2 — Web.** Consumes the backend's OpenAPI contract once real endpoints exist. Back-office/decision-level functionality (receiving approval, count-variance approval, quarantine release) lives here.
+3. **Phase 3 — Android (PDT).** Deliberately last: it's a separate platform with its own hardware/testing concerns (device fleet, camera/ML Kit integration, offline sync behavior), and module structure/DI for it is already flagged as an intentionally deferred decision pending a coworker/hardware-team discussion. Nothing in Phase 1 or 2 is blocked on it.
+
 ## Decision: generic core, not per-industry data models
 
 Considered shipping "industry packs" (Pharma, Electronics, General) selected at tenant registration, each unlocking its own tables/workflows. **Rejected** — it requires building a plugin/module framework before any real feature exists, and multiplies the test matrix per pack combination. Not worth it at this project's scale or timeline.
@@ -36,7 +44,7 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 
 ## Explicitly out of v1 (revisit later, not blocked on)
 
-- Serial number tracking (electronics-style individual-unit tracking) — schema hook (`tracksSerial`, `SerialUnit`) exists, but full workflow (RMA, warranty) is phase 2 unless the expo demo specifically requires it.
+- Serial number tracking (electronics-style individual-unit tracking) — schema hook (`tracksSerial`, `SerialUnit`) exists, but full workflow (RMA, warranty) is a later iteration unless the expo demo specifically requires it.
 - 3PL-style multi-owner inventory within one tenant.
 - Hardware barcode-scanner SDK integration on PDT (Zebra/Honeywell/etc.) — v1 is camera+ML Kit only; the existing manufacturer-auto-detect app is the reference for adding this later.
 - Offline login / device-token revocation.
