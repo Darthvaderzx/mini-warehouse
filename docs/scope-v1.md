@@ -24,6 +24,7 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 - Tenant-side barcode mapping tool (map an arbitrary/legacy code to an `ItemUnit`), for customers integrating existing labeling or an existing warehouse system.
 - Arbitrary-depth pack hierarchy per item (each/sachet/box/pallet/...), not fixed at 3 levels.
 - Fully tenant-configurable `Location` hierarchy depth (self-referencing table, no fixed level count). See [domain-model.md](domain-model.md#location-hierarchy-fully-tenant-configurable-depth-decided).
+- Handling units (LPN): tracking a specific physical box/pallet as its own entity, separate from the `ItemUnit` pack-size conversion. Opt-in per pack level via `ItemUnit.tracksAsHandlingUnit`. See [domain-model.md](domain-model.md#handling-units-lpn-tracking-a-specific-box-not-just-its-contents).
 - Multi-tenant backend, single shared Postgres database, RLS + app-layer tenant scoping.
 - Auth via ASP.NET Core Identity + OpenIddict (JWT, shift-length refresh, fixed role model). See [auth.md](auth.md).
 - Backend organized as Vertical Slice + MediatR + FluentValidation + Minimal API, EF Core code-first with migrations. See [backend-conventions.md](backend-conventions.md).
@@ -31,12 +32,11 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 - Testing approach favoring integration coverage (tenant isolation, sync/concurrency) over exhaustive unit tests. See [testing-strategy.md](testing-strategy.md).
 - Offline task-based execution on PDT (pick, putaway, count, receipt-check) with online-only login, per [sync-protocol.md](sync-protocol.md).
 - Concurrent PDTs working the same warehouse simultaneously (multiple pickers on one floor), with download-time stock reservation.
-- Camera-based scanning (ML Kit) on Android, min API 21 (Android 5.0) — the actual floor of both Jetpack Compose and ML Kit's on-device Barcode Scanning API; older devices are excluded by the libraries themselves, not by an arbitrary choice. Old-device reuse is viable down to whatever OS version is actually installed on them, no lower than 21.
+- Camera-based scanning (ML Kit) on Android, min target **API 30 (Android 11)** for now. The actual technical floor of Jetpack Compose and ML Kit's on-device Barcode Scanning API is API 21 (Android 5.0) — Kotlin itself has no minimum API level of its own, it compiles to the same bytecode as Java at any level; the historical "had to use Java for low API levels" memory is about library/tooling maturity around Kotlin's original Android rollout (c. 2017), not a language limitation, and doesn't apply here. Revisit going as low as 21 later if reusing specific old devices becomes a real, costed decision — check the actual installed OS version on those devices first, since that's the only thing that would matter (they're both above or below 21 already, this project's code doesn't change that).
 
 ## Explicitly out of v1 (revisit later, not blocked on)
 
 - Serial number tracking (electronics-style individual-unit tracking) — schema hook (`tracksSerial`, `SerialUnit`) exists, but full workflow (RMA, warranty) is phase 2 unless the expo demo specifically requires it.
-- Handling units / LPN (tracking an individual box/pallet as its own scannable, trackable entity independent of its contents) — v1 treats packaging as `ItemUnit` pack levels only. Revisit if a customer needs to scan and track a specific physical container's identity, not just what's in it.
 - 3PL-style multi-owner inventory within one tenant.
 - Hardware barcode-scanner SDK integration on PDT (Zebra/Honeywell/etc.) — v1 is camera+ML Kit only; the existing manufacturer-auto-detect app is the reference for adding this later.
 - Offline login / device-token revocation.
