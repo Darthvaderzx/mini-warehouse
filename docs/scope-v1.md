@@ -8,9 +8,10 @@ An industry-agnostic, small-scale WMS for single-warehouse (or single-storage-sp
 
 Implementation proceeds in this order, not all at once:
 
-1. **Phase 1 — Backend.** The API contract is the source of truth for every other client (see [architecture.md](architecture.md)'s contract-first decision), so it has to exist first. This is where agentic development starts.
-2. **Phase 2 — Web.** Consumes the backend's OpenAPI contract once real endpoints exist. Back-office/decision-level functionality (receiving approval, count-variance approval, quarantine release) lives here.
-3. **Phase 3 — Android (PDT).** Deliberately last: it's a separate platform with its own hardware/testing concerns (device fleet, camera/ML Kit integration, offline sync behavior), and module structure/DI for it is already flagged as an intentionally deferred decision pending a coworker/hardware-team discussion. Nothing in Phase 1 or 2 is blocked on it.
+1. **Phase 1 — Discovery & Planning.** This document set: architecture, domain model, sync protocol, auth, backend/web conventions, testing strategy. Complete as of this writing; a handful of small implementation-detail values remain intentionally open (see "Still open" below) and get decided as the phase that touches them comes up.
+2. **Phase 2 — Backend.** The API contract is the source of truth for every other client (see [architecture.md](architecture.md)'s contract-first decision), so it has to exist before Web or Android can build against it. This is where agentic development starts.
+3. **Phase 3 — Web.** Consumes the backend's OpenAPI contract once real endpoints exist. Back-office/decision-level functionality (receiving approval, count-variance approval, quarantine release) lives here.
+4. **Phase 4 — Android (PDT).** Deliberately last: it's a separate platform with its own hardware/testing concerns (device fleet, camera/ML Kit integration, offline sync behavior), and module structure/DI for it is already flagged as an intentionally deferred decision pending a coworker/hardware-team discussion. Nothing in Phase 2 or 3 is blocked on it.
 
 ## Decision: generic core, not per-industry data models
 
