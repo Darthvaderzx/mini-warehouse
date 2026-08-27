@@ -23,6 +23,7 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 - Flexible barcode support: EAN/UPC/Code128/QR + GS1-128 AI parsing (GTIN, lot, expiry, quantity).
 - Tenant-side barcode mapping tool (map an arbitrary/legacy code to an `ItemUnit`), for customers integrating existing labeling or an existing warehouse system.
 - Arbitrary-depth pack hierarchy per item (each/sachet/box/pallet/...), not fixed at 3 levels.
+- Fully tenant-configurable `Location` hierarchy depth (self-referencing table, no fixed level count). See [domain-model.md](domain-model.md#location-hierarchy-fully-tenant-configurable-depth-decided).
 - Multi-tenant backend, single shared Postgres database, RLS + app-layer tenant scoping.
 - Auth via ASP.NET Core Identity + OpenIddict (JWT, shift-length refresh, fixed role model). See [auth.md](auth.md).
 - Backend organized as Vertical Slice + MediatR + FluentValidation + Minimal API, EF Core code-first with migrations. See [backend-conventions.md](backend-conventions.md).
@@ -30,11 +31,12 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 - Testing approach favoring integration coverage (tenant isolation, sync/concurrency) over exhaustive unit tests. See [testing-strategy.md](testing-strategy.md).
 - Offline task-based execution on PDT (pick, putaway, count, receipt-check) with online-only login, per [sync-protocol.md](sync-protocol.md).
 - Concurrent PDTs working the same warehouse simultaneously (multiple pickers on one floor), with download-time stock reservation.
-- Camera-based scanning (ML Kit) on Android, min target Android 9–11 (exact floor TBD).
+- Camera-based scanning (ML Kit) on Android, min API 21 (Android 5.0) — the actual floor of both Jetpack Compose and ML Kit's on-device Barcode Scanning API; older devices are excluded by the libraries themselves, not by an arbitrary choice. Old-device reuse is viable down to whatever OS version is actually installed on them, no lower than 21.
 
 ## Explicitly out of v1 (revisit later, not blocked on)
 
 - Serial number tracking (electronics-style individual-unit tracking) — schema hook (`tracksSerial`, `SerialUnit`) exists, but full workflow (RMA, warranty) is phase 2 unless the expo demo specifically requires it.
+- Handling units / LPN (tracking an individual box/pallet as its own scannable, trackable entity independent of its contents) — v1 treats packaging as `ItemUnit` pack levels only. Revisit if a customer needs to scan and track a specific physical container's identity, not just what's in it.
 - 3PL-style multi-owner inventory within one tenant.
 - Hardware barcode-scanner SDK integration on PDT (Zebra/Honeywell/etc.) — v1 is camera+ML Kit only; the existing manufacturer-auto-detect app is the reference for adding this later.
 - Offline login / device-token revocation.
@@ -46,13 +48,11 @@ Driven in part by an upcoming hospital-adjacent expo demo, which pulled lot/expi
 
 These didn't block starting the architecture, but will block implementation of the areas they touch:
 
-- Exact `Location` hierarchy: fixed levels vs. fully tenant-configurable depth.
 - Reservation TTL for stock held by a task download that never syncs.
 - Sync batch partial-failure behavior (reject whole batch vs. apply up to first invalid event).
 - Master-data cache staleness limit on the PDT.
-- Android module structure and DI approach — the existing manufacturer-detection app is a reference point but hasn't been reviewed against this project's needs yet.
-- Non-functional targets: expected tenant count, SKUs/tenant, concurrent PDTs, scan-to-response latency target, backup/RPO/RTO, data residency requirements.
+- Android module structure and DI approach — deliberately deferred to its own dedicated pass later; the existing manufacturer-detection app is a reference point but hasn't been reviewed against this project's needs yet.
+- Non-functional targets: SKUs/tenant is small (a few dozen at most) and not a design constraint at this scale. Tenant count is intentionally unknown pending real market signal — the shared-schema Postgres design doesn't need a number to be architected correctly and comfortably scales into the hundreds of tenants at this SKU count without re-architecture. Still undecided: concurrent PDTs per warehouse, scan-to-response latency target, backup/RPO/RTO, data residency requirements.
 - Deployment specifics beyond "Docker Compose for v1": hosting provider, CI/CD, observability stack.
-- Exact minimum Android API level (9 vs. 11) — pending a look at actual target device fleet.
 - Auth token lifetime values and integration scope granularity — see [auth.md](auth.md)'s open questions.
 - Session cookie storage approach (self-contained encrypted cookie vs. server-side session store) — see [web-conventions.md](web-conventions.md)'s open questions.

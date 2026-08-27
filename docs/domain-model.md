@@ -143,10 +143,15 @@ erDiagram
 - **`TaskEvent.client_event_id`** is how sync is idempotent: replaying a sync batch (e.g. after a dropped connection mid-upload) is safe because the backend has already recorded that event ID.
 - **`Movement` has no `quantity_after` or running balance column.** On-hand stock is always computed by summing `Movement` rows for a given `item_unit`/`lot`/`location` — this is what avoids merge-conflict logic entirely; the backend only ever appends.
 
+## Location hierarchy: fully tenant-configurable depth (decided)
+
+`Location` is self-referencing (`parent_location_id`) with a free-text `level_type` label, not a fixed set of columns like `warehouse_id`/`zone_id`/`aisle_id`. This was a deliberate choice, not an oversight: target customers range from a hobbyist tracking stock in a single room (1 level) to a hospital storeroom (a few levels) to a multi-building warehouse operation (6+ levels — e.g. `Warehouse → Floor → Row → Column → Shelf → Level`). A fixed-depth hierarchy would force small tenants through meaningless empty levels or block large tenants from modeling their real physical structure. The same table and the same application code handle every depth; a tenant just creates as many or as few `Location` rows, chained by `parent_location_id`, as their physical space actually has. No schema change is needed to support this — it's already the shape above.
+
+**Note on packaging vs. addressable location:** a "box" sitting on a shelf is not automatically its own `Location`. If it's a fixed-quantity pack ("this item comes 12-to-a-box"), it's an `ItemUnit` pack level — the picker's address stops at the shelf/level, and the box is just how stock there is packaged/counted. Only model an individual box as its own trackable entity (a handling unit / LPN) if it needs to be scanned and tracked as a distinct physical thing independent of its contents — that's a separate, currently-deferred feature (see [scope-v1.md](scope-v1.md)).
+
 ## Open modeling questions
 
 Not yet decided — flag before implementing the affected area:
 
-- Exact `Location` hierarchy depth/labels: fixed 5-level (warehouse/zone/aisle/rack/bin) or fully tenant-configurable?
 - Whether `SerialUnit.status` needs its own state machine beyond reusing `InventoryStatus`.
 - UoM: are fractional/decimal quantities and catch-weight items in scope for v1, or integer-only?
