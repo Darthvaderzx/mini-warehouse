@@ -1,0 +1,1191 @@
+openapi: 3.0.3
+info:
+  title: MiniWarehouse API
+  version: 1.0.0
+  description: Multi-tenant warehouse management system API for back-office web admin and offline-first Android PDT scanners.
+servers:
+  - url: http://localhost:5000/api
+    description: Local Development Server
+paths:
+  /auth/token:
+    post:
+      summary: Authenticate user or device via ROPC
+      operationId: loginToken
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+
+  /auth/session:
+    get:
+      summary: Get current authenticated session info
+      operationId: getSessionInfo
+      tags: [Auth]
+      responses:
+        '200':
+          description: User session details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAccount'
+
+  /items:
+    get:
+      summary: List items with pagination, search, and capability filters
+      operationId: getItems
+      tags: [Items]
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: tracking
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemListResponse'
+    post:
+      summary: Create a new item with pack levels and barcodes
+      operationId: createItem
+      tags: [Items]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+      responses:
+        '201':
+          description: Item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+
+  /items/{id}:
+    get:
+      summary: Get item details by ID
+      operationId: getItemById
+      tags: [Items]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Item details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+
+  /barcodes/resolve:
+    post:
+      summary: Resolve scanned barcode to ItemUnit candidates
+      operationId: resolveBarcode
+      tags: [Barcodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                taskId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Resolved barcode matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BarcodeMatch'
+
+  /locations:
+    get:
+      summary: Get location tree hierarchy
+      operationId: getLocations
+      tags: [Locations]
+      responses:
+        '200':
+          description: Location hierarchy
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationNode'
+    post:
+      summary: Create a new location node
+      operationId: createLocation
+      tags: [Locations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLocationRequest'
+      responses:
+        '201':
+          description: Location created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+
+  /stock/summary:
+    get:
+      summary: Get warehouse dashboard stock summary and KPIs
+      operationId: getStockSummary
+      tags: [Stock]
+      responses:
+        '200':
+          description: Stock summary and metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockSummary'
+
+  /stock/balances:
+    get:
+      summary: Get stock on-hand balances per location and lot derived from Movement ledger
+      operationId: getStockBalances
+      tags: [Stock]
+      parameters:
+        - name: itemId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: locationId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current stock balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StockBalance'
+
+  /movements:
+    get:
+      summary: Query immutable movement ledger records
+      operationId: getMovements
+      tags: [Movements]
+      parameters:
+        - name: itemId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: locationId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of movements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movement'
+
+  /tasks:
+    get:
+      summary: List tasks with status and type filters
+      operationId: getTasks
+      tags: [Tasks]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tasks list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+    post:
+      summary: Create a new floor task (Putaway, Pick, Count, ReceiptCheck)
+      operationId: createTask
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /tasks/{id}/download:
+    post:
+      summary: Download assigned task to PDT with soft-reservation of stock
+      operationId: downloadTask
+      tags: [Tasks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId]
+              properties:
+                deviceId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Task with soft-reserved stock lines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /tasks/{id}/complete:
+    post:
+      summary: Complete a task and apply movements
+      operationId: completeTask
+      tags: [Tasks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Task completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /sync/events:
+    post:
+      summary: Ingest batch of offline TaskEvents idempotently and produce Movements
+      operationId: syncEvents
+      tags: [Sync]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncBatchRequest'
+      responses:
+        '200':
+          description: Batch sync processing results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncBatchResponse'
+
+  /receiving/checks/{id}/approve:
+    post:
+      summary: Approve received PO lines and move stock from dock to quarantine or available
+      operationId: approveReceivingCheck
+      tags: [Receiving]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Receipt approved and putaway task scheduled
+
+  /quarantine/release:
+    post:
+      summary: Release or reject quarantined inventory lot
+      operationId: releaseQuarantine
+      tags: [Quarantine]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuarantineReleaseRequest'
+      responses:
+        '200':
+          description: Inventory released to Available status
+
+  /opname/resolve-variance:
+    post:
+      summary: Resolve stock count variance and create adjustment movement
+      operationId: resolveVariance
+      tags: [Opname]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveVarianceRequest'
+      responses:
+        '200':
+          description: Variance resolved and movement ledger updated
+
+  /handling-units:
+    get:
+      summary: List handling units (LPNs)
+      operationId: getHandlingUnits
+      tags: [HandlingUnits]
+      responses:
+        '200':
+          description: List of LPNs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HandlingUnit'
+    post:
+      summary: Create new handling unit with unique LPN
+      operationId: createHandlingUnit
+      tags: [HandlingUnits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHandlingUnitRequest'
+      responses:
+        '201':
+          description: LPN created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandlingUnit'
+
+  /users:
+    get:
+      summary: List tenant users
+      operationId: getUsers
+      tags: [Administration]
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserAccount'
+
+  /devices:
+    get:
+      summary: List PDT scanner devices and sync status
+      operationId: getDevices
+      tags: [Administration]
+      responses:
+        '200':
+          description: List of registered devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        deviceId:
+          type: string
+          format: uuid
+
+    TokenResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserAccount'
+
+    UserAccount:
+      type: object
+      required: [id, tenantId, name, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [Owner, Admin, Supervisor, Operator]
+        tenantName:
+          type: string
+
+    Device:
+      type: object
+      required: [id, tenantId, deviceCode, name, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        deviceCode:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [Online, Offline, InUse]
+        lastSyncAt:
+          type: string
+          format: date-time
+        assignedUserId:
+          type: string
+          format: uuid
+        assignedUserName:
+          type: string
+
+    Item:
+      type: object
+      required: [id, tenantId, sku, name, category, tracksLot, tracksExpiry, tracksSerial]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        tracksLot:
+          type: boolean
+        tracksExpiry:
+          type: boolean
+        tracksSerial:
+          type: boolean
+        requiresQuarantineOnReceipt:
+          type: boolean
+        reorderPoint:
+          type: number
+        status:
+          type: string
+          enum: [Active, Inactive, Discontinued]
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemUnit'
+        onHandQuantity:
+          type: number
+
+    ItemUnit:
+      type: object
+      required: [id, itemId, levelName, conversionToBase, packOrder, isBaseUnit]
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        levelName:
+          type: string
+        conversionToBase:
+          type: number
+        packOrder:
+          type: integer
+        isBaseUnit:
+          type: boolean
+        tracksAsHandlingUnit:
+          type: boolean
+        barcodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Barcode'
+
+    Barcode:
+      type: object
+      required: [id, tenantId, itemUnitId, code, symbology]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        itemUnitId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        symbology:
+          type: string
+          enum: [EAN13, CODE128, GS1_128, QR, UPC]
+        isPrimary:
+          type: boolean
+
+    BarcodeMatch:
+      type: object
+      required: [barcode, item, itemUnit]
+      properties:
+        barcode:
+          $ref: '#/components/schemas/Barcode'
+        item:
+          $ref: '#/components/schemas/Item'
+        itemUnit:
+          $ref: '#/components/schemas/ItemUnit'
+        confidence:
+          type: string
+          enum: [ExactTaskMatch, High, Ambiguous]
+
+    CreateItemRequest:
+      type: object
+      required: [sku, name, category, baseUnitName]
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        tracksLot:
+          type: boolean
+        tracksExpiry:
+          type: boolean
+        tracksSerial:
+          type: boolean
+        requiresQuarantineOnReceipt:
+          type: boolean
+        reorderPoint:
+          type: number
+        baseUnitName:
+          type: string
+        baseUnitBarcode:
+          type: string
+        packLevels:
+          type: array
+          items:
+            type: object
+            required: [levelName, conversionToBase]
+            properties:
+              levelName:
+                type: string
+              conversionToBase:
+                type: number
+              barcode:
+                type: string
+              tracksAsHandlingUnit:
+                type: boolean
+
+    ItemListResponse:
+      type: object
+      required: [items, totalCount, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+        totalCount:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    Location:
+      type: object
+      required: [id, tenantId, name, levelType, isLeaf]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        parentLocationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        levelType:
+          type: string
+          enum: [Warehouse, Zone, Aisle, Rack, Bin, Dock]
+        barcode:
+          type: string
+        isLeaf:
+          type: boolean
+        occupancyPercent:
+          type: number
+        capacityUnits:
+          type: number
+
+    LocationNode:
+      type: object
+      required: [id, name, levelType, isLeaf]
+      properties:
+        id:
+          type: string
+          format: uuid
+        parentLocationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        levelType:
+          type: string
+        barcode:
+          type: string
+        isLeaf:
+          type: boolean
+        occupancyPercent:
+          type: number
+        meta:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationNode'
+
+    CreateLocationRequest:
+      type: object
+      required: [name, levelType]
+      properties:
+        parentLocationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        levelType:
+          type: string
+        barcode:
+          type: string
+        isLeaf:
+          type: boolean
+        capacityUnits:
+          type: number
+
+    StockSummary:
+      type: object
+      required: [totalSkus, unitsOnHand, activeTasks, lowStockAlerts, expiryAlertsCount]
+      properties:
+        totalSkus:
+          type: integer
+        unitsOnHand:
+          type: number
+        activeTasks:
+          type: integer
+        lowStockAlerts:
+          type: integer
+        expiryAlertsCount:
+          type: integer
+        recentMovements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Movement'
+        recentTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum: [danger, warning, info, success]
+              title:
+                type: string
+              message:
+                type: string
+
+    StockBalance:
+      type: object
+      required: [itemId, itemSku, itemName, locationId, locationName, quantity, status]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        itemSku:
+          type: string
+        itemName:
+          type: string
+        locationId:
+          type: string
+          format: uuid
+        locationName:
+          type: string
+        lotId:
+          type: string
+          format: uuid
+        lotNumber:
+          type: string
+        expiryDate:
+          type: string
+          format: date
+        quantity:
+          type: number
+        unitName:
+          type: string
+        status:
+          type: string
+          enum: [Available, Reserved, Quarantined, OnHold, Expired, Damaged]
+
+    Movement:
+      type: object
+      required: [id, tenantId, itemId, quantityBase, inventoryStatus, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        itemSku:
+          type: string
+        fromLocationId:
+          type: string
+          format: uuid
+        fromLocationName:
+          type: string
+        toLocationId:
+          type: string
+          format: uuid
+        toLocationName:
+          type: string
+        quantityBase:
+          type: number
+        direction:
+          type: string
+          enum: [in, out, transfer]
+        inventoryStatus:
+          type: string
+        lotNumber:
+          type: string
+        serialNumber:
+          type: string
+        referenceDoc:
+          type: string
+        reason:
+          type: string
+          enum: [Receipt, Putaway, Pick, OpnameAdjustment, QuarantineRelease, Scrap, Relocation]
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        deviceId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    Task:
+      type: object
+      required: [id, tenantId, type, status, priority, title]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [Pick, Putaway, Count, ReceiptCheck]
+        status:
+          type: string
+          enum: [Pending, Assigned, InProgress, Completed, Cancelled, Exception]
+        priority:
+          type: integer
+        title:
+          type: string
+        referenceDoc:
+          type: string
+        assignedUserId:
+          type: string
+          format: uuid
+        assignedUserName:
+          type: string
+        assignedDeviceId:
+          type: string
+          format: uuid
+        assignedDeviceCode:
+          type: string
+        locationHint:
+          type: string
+        linesCount:
+          type: integer
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskLine'
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    TaskLine:
+      type: object
+      required: [id, taskId, itemId, expectedQty, completedQty, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        itemSku:
+          type: string
+        itemUnitId:
+          type: string
+          format: uuid
+        unitName:
+          type: string
+        sourceLocationId:
+          type: string
+          format: uuid
+        sourceLocationName:
+          type: string
+        destLocationId:
+          type: string
+          format: uuid
+        destLocationName:
+          type: string
+        expectedQty:
+          type: number
+        completedQty:
+          type: number
+        lotNumber:
+          type: string
+        expiryDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [Pending, InProgress, Completed, Shorted, Skipped]
+
+    CreateTaskRequest:
+      type: object
+      required: [type, title]
+      properties:
+        type:
+          type: string
+          enum: [Pick, Putaway, Count, ReceiptCheck]
+        title:
+          type: string
+        referenceDoc:
+          type: string
+        priority:
+          type: integer
+          default: 1
+        assignedUserId:
+          type: string
+          format: uuid
+        assignedDeviceId:
+          type: string
+          format: uuid
+        lines:
+          type: array
+          items:
+            type: object
+            required: [itemId, itemUnitId, expectedQty]
+            properties:
+              itemId:
+                type: string
+                format: uuid
+              itemUnitId:
+                type: string
+                format: uuid
+              sourceLocationId:
+                type: string
+                format: uuid
+              destLocationId:
+                type: string
+                format: uuid
+              expectedQty:
+                type: number
+              lotNumber:
+                type: string
+
+    TaskEvent:
+      type: object
+      required: [clientEventId, taskId, type, deviceOccurredAt]
+      properties:
+        clientEventId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        taskLineId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [ScanLocation, ScanItem, ConfirmQuantity, ShortPick, CountResult, Exception]
+        scannedBarcode:
+          type: string
+        scannedLocationBarcode:
+          type: string
+        qtyScanned:
+          type: number
+        itemUnitId:
+          type: string
+          format: uuid
+        lotNumber:
+          type: string
+        expiryDate:
+          type: string
+          format: date
+        serialNumber:
+          type: string
+        deviceOccurredAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+
+    SyncBatchRequest:
+      type: object
+      required: [deviceId, events]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskEvent'
+
+    SyncBatchResponse:
+      type: object
+      required: [processedCount, results]
+      properties:
+        processedCount:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            required: [clientEventId, status]
+            properties:
+              clientEventId:
+                type: string
+                format: uuid
+              status:
+                type: string
+                enum: [Applied, AlreadyProcessed, Rejected]
+              errorReason:
+                type: string
+              movementId:
+                type: string
+                format: uuid
+
+    QuarantineReleaseRequest:
+      type: object
+      required: [lotId, action]
+      properties:
+        lotId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [ReleaseToAvailable, Scrap, ReturnToVendor]
+        targetLocationId:
+          type: string
+          format: uuid
+        notes:
+          type: string
+
+    ResolveVarianceRequest:
+      type: object
+      required: [taskId, taskLineId, action]
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        taskLineId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [AcceptCount, RecountRequested, RejectCount]
+        adjustedQty:
+          type: number
+        reason:
+          type: string
+
+    HandlingUnit:
+      type: object
+      required: [id, tenantId, lpnCode, itemUnitId, currentLocationId, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        lpnCode:
+          type: string
+        itemUnitId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        currentLocationId:
+          type: string
+          format: uuid
+        currentLocationName:
+          type: string
+        status:
+          type: string
+          enum: [InStorage, InTransit, Empty, Damaged]
+        quantity:
+          type: number
+
+    CreateHandlingUnitRequest:
+      type: object
+      required: [itemUnitId, locationId, quantity]
+      properties:
+        itemUnitId:
+          type: string
+          format: uuid
+        locationId:
+          type: string
+          format: uuid
+        quantity:
+          type: number
+        lotNumber:
+          type: string
+        customLpnCode:
+          type: string

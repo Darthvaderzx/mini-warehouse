@@ -1,27 +1,108 @@
-# Mini Warehouse
+# MiniWarehouse
 
-A small-scale, multi-tenant warehouse management system: Android PDTs for offline-capable floor work, a Next.js back-office web app, and an ASP.NET Core backend as the single source of truth. Built for customers with a single warehouse or storage space who don't need (or can't afford) full enterprise WMS overhead — industry-agnostic by design.
+MiniWarehouse is a multi-tenant warehouse management system (WMS) designed for small-scale operators who need robust, offline-capable floor operations with handheld Android scanners (PDTs) and a Next.js back-office web application, backed by a central API service.
 
-**Start here:** [CLAUDE.md](CLAUDE.md), then [docs/architecture.md](docs/architecture.md).
+## Key Architectural Principles
 
-## Docs
+- **Single Source of Truth**: Stock balances are derived dynamically by replaying the immutable `Movement` event ledger.
+- **Dual-Layer Multi-Tenancy**: Scoped by `tenant_id` at both application and database level (PostgreSQL RLS).
+- **Offline-First Sync Protocol**: Client operations generate idempotent `TaskEvent`s with client-side UUIDs.
+- **Generic Capability Flags**: Products support lot tracking (`tracksLot`), expiry date (`tracksExpiry`), and serial numbers (`tracksSerial`) without vertical-specific schema forks.
+- **Flexible Barcodes**: Non-unique barcodes attached to packaging levels (`ItemUnit`), resolved via task context.
 
-- [docs/architecture.md](docs/architecture.md) — tech stack, multi-tenancy, monorepo layout, sync model summary
-- [docs/domain-model.md](docs/domain-model.md) — entities and ERD
-- [docs/sync-protocol.md](docs/sync-protocol.md) — offline task queue + event ledger design
-- [docs/auth.md](docs/auth.md) — ASP.NET Identity + OpenIddict auth design
-- [docs/backend-conventions.md](docs/backend-conventions.md) — Vertical Slice + MediatR + FluentValidation + Minimal API + EF Core
-- [docs/web-conventions.md](docs/web-conventions.md) — App Router, TanStack Query, shadcn/ui, Orval, BFF session auth
-- [docs/testing-strategy.md](docs/testing-strategy.md) — what's tested, what isn't, and why
-- [docs/scope-v1.md](docs/scope-v1.md) — v1 in/out scope and open decisions
-- [docs/glossary.md](docs/glossary.md) — domain vocabulary
+---
 
-## Layout
+## Repository Structure
 
 ```
-/backend    ASP.NET Core WebAPI, .NET 10
-/web        Next.js + React admin/back-office app
-/android    Kotlin + Jetpack Compose PDT app
-/docs       Architecture and domain documentation
-/infra      Docker Compose, deployment config
+/backend     API service (Express / TypeScript / PostgreSQL / Jest)
+/web         Next.js Back-Office Web Application (App Router / TypeScript / Jest)
+/android     Android handheld scanner app (Kotlin / Jetpack Compose / ML Kit)
+/docs        System architecture, domain model, sync protocol, and auth specifications
+/documentation Project rules and release changelog
+/infra       Docker Compose and container definitions
+```
+
+---
+
+## Prerequisites
+
+- **Node.js**: v20.x or later
+- **npm**: v10.x or later
+- **Docker & Docker Compose** (for containerized deployment)
+
+---
+
+## Installation
+
+### 1. Backend
+```bash
+cd backend
+npm install
+```
+
+### 2. Web Application
+```bash
+cd web
+npm install
+```
+
+---
+
+## Development Mode
+
+### Run Backend Server
+```bash
+cd backend
+npm run dev
+# API listening at http://localhost:5000/api
+```
+
+### Run Web Back-Office App
+```bash
+cd web
+npm run dev
+# Web application available at http://localhost:3000
+```
+
+---
+
+## Production Build
+
+### Build Backend
+```bash
+cd backend
+npm run build
+```
+
+### Build Web Application
+```bash
+cd web
+npm run build
+```
+
+---
+
+## Running Tests
+
+### Run Backend Tests (Tenant Isolation, Sync Idempotency, Barcode Resolution)
+```bash
+cd backend
+npm test
+```
+
+### Run Web Tests
+```bash
+cd web
+npm test
+```
+
+---
+
+## Docker Deployment
+
+To build and run all services (PostgreSQL, Backend API, Web App) with Docker Compose:
+```bash
+cd infra
+docker compose up --build
 ```

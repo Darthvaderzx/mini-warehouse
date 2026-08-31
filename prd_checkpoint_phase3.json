@@ -1,0 +1,103 @@
+{
+  "database_schema": [
+    {
+      "table": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "constraints": "PK"
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "constraints": "UNIQUE NOT NULL"
+        },
+        {
+          "name": "password_hash",
+          "type": "VARCHAR(255)",
+          "constraints": "NOT NULL"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "constraints": "NOT NULL"
+        }
+      ]
+    },
+    {
+      "table": "orders",
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "constraints": "PK"
+        },
+        {
+          "name": "user_id",
+          "type": "UUID",
+          "constraints": "FK NOT NULL"
+        },
+        {
+          "name": "total_amount",
+          "type": "DECIMAL(10,2)",
+          "constraints": "NOT NULL"
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(50)",
+          "constraints": "NOT NULL"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "constraints": "NOT NULL"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "phase": "Backend API",
+      "items": [
+        {
+          "title": "Setup database connection and models",
+          "parent_task_id": null,
+          "phase_id": null,
+          "depends_on": []
+        },
+        {
+          "title": "Implement User authentication endpoints",
+          "parent_task_id": null,
+          "phase_id": null,
+          "depends_on": [
+            "Setup database connection and models"
+          ]
+        },
+        {
+          "title": "Implement Order management endpoints",
+          "parent_task_id": null,
+          "phase_id": null,
+          "depends_on": [
+            "Setup database connection and models"
+          ]
+        },
+        {
+          "title": "Write unit tests for API endpoints",
+          "parent_task_id": null,
+          "phase_id": null,
+          "depends_on": [
+            "Implement User authentication endpoints",
+            "Implement Order management endpoints"
+          ]
+        }
+      ],
+      "items_fallback": [
+        "Setup database connection and models",
+        "Implement User authentication endpoints",
+        "Implement Order management endpoints",
+        "Write unit tests for API endpoints"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "task": "TASK-b328c87e-01: [Backend API] Setup database connection and models",
+    "status": "pending"
+  },
+  {
+    "task": "TASK-b328c87e-02: [Backend API] Implement User authentication endpoints",
+    "status": "pending"
+  },
+  {
+    "task": "TASK-b328c87e-03: [Backend API] Implement Order management endpoints",
+    "status": "pending"
+  },
+  {
+    "task": "TASK-b328c87e-04: [Backend API] Write unit tests for API endpoints",
+    "status": "pending"
+  }
+]

@@ -1,0 +1,464 @@
+{
+  "overview": "MiniWarehouse is a small-scale, multi-tenant warehouse management system designed for operators who cannot justify enterprise WMS cost or infrastructure overhead. The system serves multiple customer tenants from a single cloud backend, supporting Android handheld scanners (PDTs) for floor activities (putaway, picking, receiving, stock counts) with offline capability, alongside a Next.js back-office web application for administrative and supervisory functions. The ASP.NET Core backend (.NET 10) acts as the single source of truth for all stock data, deriving balances exclusively by replaying an append-only Movement ledger rather than storing mutable counters.\n\nThe implementation follows a strict delivery order: Discovery (Phase 1 \u2014 documentation, complete) \u2192 Backend (Phase 2 \u2014 this specification) \u2192 Web (Phase 3) \u2192 Android (Phase 4). The backend must be scaffolded first because its OpenAPI contract is the foundation that both the web and Android clients generate against. Key architectural invariants include: dual-layer multi-tenancy enforcement (EF Core global query filters + PostgreSQL RLS), contract-first API design, industry-agnostic product modeling via per-Item capability flags, non-unique barcode resolution by task context, and an offline sync protocol based on idempotent TaskEvent batches.\n\nImpact analysis: This is a greenfield codebase \u2014 all source files under /backend, /web, /android, and /infra are to be created. Existing documentation under /docs defines all architectural decisions, domain model shape, sync protocol, auth design, and coding conventions. The primary risks are: (1) multi-tenancy enforcement bugs causing cross-tenant data leaks, (2) sync protocol correctness under concurrent PDT operations, (3) OpenAPI contract drift between backend and generated clients, (4) barcode non-uniqueness resolution logic correctness, and (5) Movement ledger replay accuracy for stock computation. All risks are mitigated by the documented testing strategy: integration tests against real Postgres via Testcontainers for RLS/tenant isolation, dedicated concurrency tests for sync/movement logic, and contract-first code generation preventing API drift.",
+  "project_owner": "MiniWarehouse Product Team",
+  "division_or_client": "Warehouse Operations Division",
+  "mermaid_flow": "graph TD\n    A[\"Warehouse Admin\"] -->|\"Logs in via web browser\"| B[\"Next.js Web App\"]\n    B -->|\"Authenticate (ROPC)\"| C[\"OpenIddict Auth Server\"]\n    C -->|\"JWT with tenant_id + role\"| B\n    B -->|\"Manage items, locations, tasks\"| D[\"ASP.NET Core API\"]\n    D -->|\"Resolve tenant from JWT\"| E[\"PostgreSQL + RLS\"]\n    E -->|\"Scoped query results\"| D\n    D -->|\"JSON response\"| B\n    B -->|\"Display dashboards, master data\"| A\n\n    F[\"Floor Operator\"] -->|\"Logs in on PDT\"| G[\"Android PDT App\"]\n    G -->|\"Authenticate (ROPC + device_id)\"| C\n    C -->|\"JWT with tenant_id + role + device_id\"| G\n    G -->|\"Pull assigned tasks (online)\"| D\n    D -->|\"Soft-reserve stock (FOR UPDATE SKIP LOCKED)\"| E\n    E -->|\"Reserved task lines\"| D\n    D -->|\"Task payload\"| G\n    G -->|\"Execute tasks (offline)\"| H[\"Local SQLite + Event Queue\"]\n    H -->|\"Sync idempotent TaskEvents (online)\"| D\n    D -->|\"Apply as Movement ledger entries\"| E\n    E -->|\"Updated stock via replay\"| D\n    D -->|\"Sync acknowledgment\"| G\n    G -->|\"Show completed tasks\"| F",
+  "mermaid_flow_explanation": "The system has two primary user journeys converging on a shared backend. The Warehouse Admin uses the Next.js web application to manage master data (items, locations, pack hierarchies, barcodes), create and assign tasks, review stock levels, and handle supervisory actions like resolving count variances or approving receipt checks. Authentication flows through OpenIddict using Resource Owner Password Credentials (ROPC) grant, producing a JWT carrying tenant_id and role claims. Every API call is scoped to the admin's tenant via EF Core global query filters and PostgreSQL RLS.\n\nThe Floor Operator uses an Android PDT (handheld scanner) for physical warehouse work. The PDT authenticates online with the same ROPC flow but additionally includes a device_id claim. While online, the PDT downloads assigned tasks; the backend soft-reserves stock using SELECT FOR UPDATE SKIP LOCKED to prevent double-allocation across concurrent operators. The operator then works offline \u2014 scanning barcodes, confirming quantities, capturing lot/expiry/serial data as required by each item's capability flags. All actions are recorded as idempotent TaskEvents in a local queue. When connectivity returns, the PDT syncs the event batch to the backend, which applies each event as an immutable Movement record in the append-only ledger. Stock balances are always derived by replaying Movements, never stored as mutable counters. This architecture ensures that multiple PDTs can operate concurrently on the same warehouse floor without data conflicts, and that offline work is never lost.",
+  "flows": [
+    {
+      "name": "Tenant Admin Login and Dashboard",
+      "description": "Warehouse admin authenticates via the web application and accesses the operational dashboard showing stock summaries, pending tasks, and recent movements.",
+      "trigger": "user action",
+      "mermaid": "graph TD\n        A[\"Admin opens web app\"] --> B[\"Login page\"]\n        B -->|\"Enter email + password\"| C[\"POST /connect/token (ROPC)\"]\n        C -->|\"JWT returned\"| D[\"Store session via BFF\"]\n        D --> E[\"Dashboard page\"]\n        E -->|\"GET /api/stock/summary\"| F[\"Backend resolves tenant_id from JWT\"]\n        F --> G[\"PostgreSQL RLS-scoped query\"]\n        G --> H[\"Return stock totals\"]\n        H --> I[\"Display on dashboard\"]",
+      "steps": [
+        "Admin navigates to web application URL",
+        "Admin enters email and password on login form",
+        "Frontend sends ROPC token request to OpenIddict /connect/token",
+        "Backend validates credentials via ASP.NET Identity, issues JWT with tenant_id and role claims",
+        "Web app stores session via BFF pattern, redirects to dashboard",
+        "Dashboard loads stock summary, recent movements, and pending task counts via TanStack Query",
+        "All API calls include JWT; backend resolves tenant_id and applies RLS scoping"
+      ],
+      "inputs": [
+        {
+          "field": "email",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "password",
+          "type": "string",
+          "source": "user"
+        }
+      ]
+    },
+    {
+      "name": "Item and Location Master Data Management",
+      "description": "Admin creates and manages items (with capability flags for lot/expiry/serial tracking), pack-level unit hierarchies, barcode mappings, and warehouse locations.",
+      "trigger": "user action",
+      "mermaid": "graph TD\n        A[\"Admin navigates to Items page\"] --> B[\"Item list with search/filter\"]\n        B -->|\"Click Create Item\"| C[\"Item form\"]\n        C -->|\"Fill name, SKU, capability flags\"| D[\"POST /api/items\"]\n        D --> E[\"Backend validates via FluentValidation\"]\n        E --> F[\"EF Core inserts with tenant_id\"]\n        F --> G[\"Item created\"]\n        G --> H[\"Admin adds pack levels (ItemUnit)\"]\n        H --> I[\"Admin maps barcodes to ItemUnits\"]\n        I --> J[\"Barcode lookup ready for PDT scanning\"]",
+      "steps": [
+        "Admin navigates to Items master data page",
+        "Admin clicks Create Item and fills in name, description, and capability flags (tracksLot, tracksExpiry, tracksSerial)",
+        "Frontend submits POST /api/items; FluentValidation validates input",
+        "Backend creates Item entity with tenant_id from JWT, persists via EF Core",
+        "Admin creates ItemUnit records for pack hierarchy (each, inner pack, case, pallet)",
+        "Admin maps Barcode records to ItemUnits (non-unique, scoped by tenant_id + code + symbology)",
+        "Admin navigates to Locations page and creates warehouse location hierarchy (zone \u2192 aisle \u2192 rack \u2192 bin)",
+        "All data is immediately available for task creation and PDT scanning"
+      ],
+      "inputs": [
+        {
+          "field": "item_name",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "sku",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "tracks_lot",
+          "type": "boolean",
+          "source": "user"
+        },
+        {
+          "field": "tracks_expiry",
+          "type": "boolean",
+          "source": "user"
+        },
+        {
+          "field": "tracks_serial",
+          "type": "boolean",
+          "source": "user"
+        },
+        {
+          "field": "unit_name",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "unit_quantity",
+          "type": "integer",
+          "source": "user"
+        },
+        {
+          "field": "barcode_code",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "barcode_symbology",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "location_code",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "location_name",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "parent_location_id",
+          "type": "string",
+          "source": "user"
+        }
+      ]
+    },
+    {
+      "name": "Task Creation and Assignment",
+      "description": "Supervisor creates warehouse tasks (pick, putaway, count, receipt check) and assigns them to operators or devices for floor execution.",
+      "trigger": "user action",
+      "mermaid": "graph TD\n        A[\"Supervisor opens Tasks page\"] --> B[\"Task list\"]\n        B -->|\"Click Create Task\"| C[\"Task type selection\"]\n        C -->|\"Select Pick Task\"| D[\"Pick task form\"]\n        D -->|\"Select items, quantities, source locations\"| E[\"POST /api/tasks\"]\n        E --> F[\"Backend creates Task + TaskLines\"]\n        F --> G[\"Supervisor assigns to operator/device\"]\n        G --> H[\"Task appears on PDT when synced\"]",
+      "steps": [
+        "Supervisor navigates to Tasks page in web app",
+        "Supervisor selects task type (Pick, Putaway, Count, ReceiptCheck)",
+        "Supervisor fills task details: items, quantities, source/destination locations, priority",
+        "Frontend submits POST /api/tasks; backend validates and creates Task with associated TaskLines",
+        "Supervisor assigns task to a specific operator or device",
+        "When PDT next syncs (or immediately if online), task is included in the pull response",
+        "Backend soft-reserves stock at task-download time using FOR UPDATE SKIP LOCKED"
+      ],
+      "inputs": [
+        {
+          "field": "task_type",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "item_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "item_unit_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "expected_quantity",
+          "type": "integer",
+          "source": "user"
+        },
+        {
+          "field": "source_location_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "destination_location_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "assigned_operator_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "assigned_device_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "priority",
+          "type": "integer",
+          "source": "user"
+        }
+      ]
+    },
+    {
+      "name": "PDT Offline Task Execution and Sync",
+      "description": "Floor operator downloads assigned tasks on PDT, executes them offline by scanning barcodes and confirming quantities, then syncs completed TaskEvents back to the backend when connectivity returns.",
+      "trigger": "user action",
+      "mermaid": "graph TD\n        A[\"Operator opens PDT app\"] --> B[\"Login (online)\"]\n        B -->|\"ROPC + device_id\"| C[\"JWT received\"]\n        C --> D[\"Pull assigned tasks\"]\n        D -->|\"GET /api/tasks/assigned\"| E[\"Backend returns tasks + soft-reserves stock\"]\n        E --> F[\"Tasks stored locally on PDT\"]\n        F --> G[\"Operator goes offline\"]\n        G --> H[\"Operator scans barcode at location\"]\n        H --> I[\"Resolve barcode by task context\"]\n        I --> J[\"Operator confirms quantity, captures lot/serial if required\"]\n        J --> K[\"TaskEvent created locally (idempotent UUID)\"]\n        K --> L[\"Operator completes task\"]\n        L --> M[\"Connectivity returns\"]\n        M --> N[\"POST /api/sync/events (batch)\"]\n        N --> O[\"Backend applies each as Movement in transaction\"]\n        O --> P[\"Stock updated via ledger replay\"]\n        P --> Q[\"Sync acknowledgment sent to PDT\"]",
+      "steps": [
+        "Operator logs in on PDT (online only) using ROPC grant with device_id header",
+        "PDT requests assigned tasks via GET /api/tasks/assigned",
+        "Backend returns task payload and soft-reserves stock using SELECT FOR UPDATE SKIP LOCKED",
+        "PDT stores tasks in local SQLite database",
+        "Operator loses connectivity and continues working offline",
+        "Operator scans barcode; PDT resolves ambiguity using active task context, prompts if still ambiguous",
+        "Operator confirms quantity; PDT shows lot/expiry/serial fields based on item capability flags",
+        "PDT creates idempotent TaskEvent with client-generated UUID, stores in local event queue",
+        "Operator marks task complete; local task status updated",
+        "When connectivity returns, PDT batches unsent TaskEvents and POSTs to /api/sync/events",
+        "Backend validates each event's idempotency key, applies as Movement records within a single transaction",
+        "Backend returns sync acknowledgment; PDT marks events as synced and removes from local queue"
+      ],
+      "inputs": [
+        {
+          "field": "scanned_barcode",
+          "type": "string",
+          "source": "device"
+        },
+        {
+          "field": "confirmed_quantity",
+          "type": "integer",
+          "source": "user"
+        },
+        {
+          "field": "lot_number",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "expiry_date",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "serial_number",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "actual_location_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "task_event_id",
+          "type": "string",
+          "source": "device"
+        },
+        {
+          "field": "device_timestamp",
+          "type": "string",
+          "source": "device"
+        }
+      ]
+    },
+    {
+      "name": "Stock Inquiry and Movement History",
+      "description": "Admin or supervisor queries current stock levels (derived from Movement ledger replay) and reviews movement history for audit trail purposes.",
+      "trigger": "user action",
+      "mermaid": "graph TD\n        A[\"User opens Stock page\"] --> B[\"Stock list by item/location\"]\n        B -->|\"Filter by item, location, lot\"| C[\"GET /api/stock/query\"]\n        C --> D[\"Backend replays Movements to compute on-hand\"]\n        D --> E[\"Return computed balances\"]\n        E --> F[\"Display stock grid\"]\n        F -->|\"Click item row\"| G[\"Movement history for that item\"]\n        G --> H[\"GET /api/movements?item_id=X\"]\n        H --> I[\"Return append-only Movement records\"]\n        I --> J[\"Display chronological movement log\"]",
+      "steps": [
+        "User navigates to Stock page in web app",
+        "User applies filters (item, location, lot, inventory status)",
+        "Frontend calls GET /api/stock/query with filter parameters",
+        "Backend resolves tenant_id from JWT, queries Movement ledger, computes on-hand balances",
+        "Results displayed in a filterable, sortable grid",
+        "User clicks on a specific item/location row to view movement history",
+        "Frontend calls GET /api/movements with item/location filter",
+        "Backend returns append-only Movement records with timestamps, task references, and operator info",
+        "Movement history displayed as chronological audit log"
+      ],
+      "inputs": [
+        {
+          "field": "item_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "location_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "lot_number",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "inventory_status",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "date_from",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "date_to",
+          "type": "string",
+          "source": "user"
+        }
+      ]
+    },
+    {
+      "name": "Count Variance Resolution",
+      "description": "Supervisor reviews stock count results submitted by PDT operators, identifies variances between expected and actual quantities, and approves adjustments to correct the ledger.",
+      "trigger": "user action",
+      "mermaid": "graph TD\n        A[\"Supervisor opens Count Tasks page\"] --> B[\"List of completed count tasks\"]\n        B -->|\"Select count task with variance\"| C[\"Count detail page\"]\n        C --> D[\"Show expected vs actual per line\"]\n        D --> E[\"Supervisor reviews variance reasons\"]\n        E -->|\"Approve adjustment\"| F[\"POST /api/opname/resolve-variance\"]\n        F --> G[\"Backend creates adjustment Movement\"]\n        G --> H[\"Stock corrected via ledger\"]",
+      "steps": [
+        "Supervisor navigates to Count Tasks page showing all completed stock counts",
+        "Supervisor selects a count task that has variances (expected \u2260 actual)",
+        "Detail page shows each count line with expected quantity, actual counted quantity, and variance",
+        "Supervisor reviews operator notes and decides whether to approve the variance",
+        "Supervisor clicks Approve Adjustment; frontend sends POST /api/opname/resolve-variance",
+        "Backend validates the resolution, creates an adjustment Movement record",
+        "Stock balances are automatically corrected via ledger replay",
+        "Count task status updated to Resolved; audit trail records supervisor approval"
+      ],
+      "inputs": [
+        {
+          "field": "count_task_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "count_line_id",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "resolution_notes",
+          "type": "string",
+          "source": "user"
+        },
+        {
+          "field": "approved",
+          "type": "boolean",
+          "source": "user"
+        }
+      ]
+    }
+  ],
+  "user_stories": [
+    {
+      "id": "US1",
+      "title": "Admin login and tenant-scoped access",
+      "description": "As a warehouse admin, I want to log in to the web application with my email and password so that I can access only my tenant's data and perform administrative functions.",
+      "acceptance_criteria": [
+        "Login page accepts email and password",
+        "Authentication uses ROPC grant via OpenIddict /connect/token endpoint",
+        "JWT contains tenant_id and role claims resolved from ASP.NET Identity user record",
+        "All subsequent API calls include the JWT and are scoped to the admin's tenant via RLS",
+        "Invalid credentials return a clear error message without revealing which field was wrong",
+        "Session persists across page refreshes via BFF session pattern"
+      ]
+    },
+    {
+      "id": "US2",
+      "title": "Create and manage item master data",
+      "description": "As a warehouse admin, I want to create items with configurable pack-level hierarchies and barcode mappings so that floor operators can scan and identify products correctly.",
+      "acceptance_criteria": [
+        "Admin can create an Item with name, description, and capability flags (tracksLot, tracksExpiry, tracksSerial)",
+        "Admin can create ItemUnit records representing pack levels (each, inner, case, pallet) with quantity multipliers",
+        "Admin can map multiple Barcode records to an ItemUnit; barcodes are non-unique within tenant scope",
+        "GS1-128 Application Identifier parsing is supported for barcode input",
+        "Item list page supports search, filter, and pagination",
+        "All operations are tenant-scoped; admin cannot see or modify other tenants' items"
+      ]
+    },
+    {
+      "id": "US3",
+      "title": "Create and manage warehouse locations",
+      "description": "As a warehouse admin, I want to define a hierarchical location structure (zone, aisle, rack, bin) so that stock can be precisely located and tasks can reference specific positions.",
+      "acceptance_criteria": [
+        "Admin can create locations with a code, name, and optional parent location reference",
+        "Location hierarchy supports arbitrary depth (minimum: zone \u2192 bin)",
+        "Location list page shows hierarchy in a tree or indented view",
+        "Locations can be marked as active/inactive; inactive locations cannot be assigned to new tasks",
+        "All locations are tenant-scoped via RLS"
+      ]
+    },
+    {
+      "id": "US4",
+      "title": "Create and assign warehouse tasks",
+      "description": "As a supervisor, I want to create pick, putaway, count, and receipt check tasks and assign them to operators or devices so that floor work is organized and trackable.",
+      "acceptance_criteria": [
+        "Supervisor can create tasks of type Pick, Putaway, Count, or ReceiptCheck",
+        "Each task contains one or more task lines specifying item, unit, quantity, source/destination location",
+        "Tasks can be assigned to a specific operator, device, or left unassigned for general pickup",
+        "Task list page shows status (Pending, InProgress, Completed), assignment, and priority",
+        "When a PDT pulls an assigned task, the backend soft-reserves stock using FOR UPDATE SKIP LOCKED",
+        "Supervisor can cancel or reassign pending tasks"
+      ]
+    },
+    {
+      "id": "US5",
+      "title": "PDT operator login and task download",
+      "description": "As a floor operator, I want to log in on the PDT and download my assigned tasks so that I can work through them even without network connectivity.",
+      "acceptance_criteria": [
+        "PDT login screen accepts email, password; device_id is sent as a header",
+        "Authentication uses ROPC grant; JWT includes tenant_id, role, and device_id claims",
+        "After login, PDT automatically pulls all assigned tasks from the backend",
+        "Tasks are stored in local SQLite database for offline access",
+        "PDT shows a task list sorted by priority with status indicators",
+        "Login is online-only; no offline credential caching"
+      ]
+    },
+    {
+      "id": "US6",
+      "title": "Execute pick task offline with barcode scanning",
+      "description": "As a floor operator, I want to execute a pick task by scanning barcodes and confirming quantities while offline so that warehouse operations continue regardless of connectivity.",
+      "acceptance_criteria": [
+        "Operator selects a pick task from the PDT task list",
+        "PDT activates camera/ML Kit scanner for barcode input",
+        "Scanned barcode is resolved against the active task's expected items; if ambiguous, operator is prompted to select",
+        "Operator confirms picked quantity; lot/expiry/serial fields appear conditionally based on item capability flags",
+        "Each confirmation creates an idempotent TaskEvent with a client-generated UUID",
+        "TaskEvents are queued locally and marked as unsynced",
+        "Task progress is visible on the PDT screen (lines completed vs total)"
+      ]
+    },
+    {
+      "id": "US7",
+      "title": "Sync completed TaskEvents to backend",
+      "description": "As a floor operator, I want my completed task events to automatically sync to the backend when connectivity returns so that stock balances are updated and tasks are marked complete.",
+      "acceptance_criteria": [
+        "PDT detects connectivity restoration automatically",
+        "Unsynced TaskEvents are batched and POSTed to /api/sync/events",
+        "Backend validates each event's idempotency key; duplicate events are acknowledged but not re-applied",
+        "Each accepted event is applied as a Movement record within a database transaction",
+        "Backend returns sync acknowledgment; PDT marks events as synced and removes from local queue",
+        "Failed events (e.g., task was cancelled server-side) are reported to the operator with a clear message",
+        "Sync can be triggered manually by the operator as well as automatically"
+      ]
+    },
+    {
+      "id": "US8",
+      "title": "View stock levels derived from Movement ledger",
+      "description": "As a warehouse admin or supervisor, I want to view current stock levels that are accurately computed from the Movement ledger so that I have a reliable picture of inventory.",
+      "acceptance_criteria": [
+        "Stock page shows on-hand quantities per item, unit, location, and lot (if applicable)",
+        "Stock values are computed by replaying Movement records, not from stored counters",
+        "Filters allow narrowing by item, location, lot, expiry date range, and inventory status",
+        "Results are paginated and sortable",
+        "Stock data is always tenant-scoped via RLS",
+        "Page loads within acceptable performance bounds for typical tenant data volumes"
+      ]
+    },
+    {
+      "id": "US9",
+      "title": "Review and resolve count variances",
+      "description": "As a supervisor, I want to review stock count results from PDT operators and approve adjustments for any variances so that the ledger accurately reflects physical inventory.",
+      "acceptance_criteria": [
+        "Count task detail page shows expected vs actual quantity per line with variance highlighted",
+        "Supervisor can view operator notes attached to each count line",
+        "Supervisor can approve or reject each variance line individually",
+        "Approved variances generate adjustment Movement records that correct the ledger",
+        "Rejected variances can be sent back to the operator for re-count (new task created)",
+        "All resolution actions are audit-trailed with supervisor identity and timestamp"
+      ]
+    },
+    {
+      "id": "US10",
+      "title": "Manage users and devices per tenant",
+      "description": "As a tenant owner/admin, I want to create user accounts and register PDT devices within my tenant so that operators can authenticate and be tracked.",
+      "acceptance_criteria": [
+        "Admin can create user accounts with email, password, role (Owner/Admin, Supervisor, Operator), and tenant association",
+        "Email is globally unique across the entire platform (not scoped per tenant)",
+        "Admin can register devices with a stable device_id, name, and status (active/revoked)",
+        "Admin can revoke a device's session immediately (kills active refresh tokens)",
+        "User list and device list pages show current status and last activity",
+        "All user/device management is tenant-scoped"
+      ]
+    }
+  ],
+  "tech_stack": {
+    "frontend": "Next.js (App Router) + React, TypeScript, TanStack Query, shadcn/ui, Orval (OpenAPI client generation), BFF session auth pattern",
+    "backend": "ASP.NET Core Web API, .NET 10, MediatR (Vertical Slice), FluentValidation, Minimal API, Entity Framework Core (code-first), OpenIddict (OAuth2/OIDC), ASP.NET Core Identity",
+    "database": "PostgreSQL with Row-Level Security (RLS), EF Core global query filters, append-only Movement ledger",
+    "deployment": "Docker Compose (backend, web, postgres services), contract-first OpenAPI spec"
+  }
+}
